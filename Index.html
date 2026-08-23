@@ -1,0 +1,117 @@
+#include <ESP8266WiFi.h>
+#include <ESP8266HTTPClient.h>
+#include <WiFiClientSecure.h>
+#include <DNSServer.h>
+#include <ESP8266WebServer.h>
+#include <WiFiManager.h>
+#include <time.h>
+
+// PIN DEL LED INTEGRADO EN ESP8266
+#define PIN_LED D4  // GPIO 2 (LED Azul)
+
+// URL base sin la barra al final
+const String BASE_URL = "https://luces-campo-default-rtdb.firebaseio.com";
+const String AUTH_KEY = "AIzaSyAuXCEZGd0d39eR3PJLUeGIV9YbeyXC2Ss";
+
+// Servidor de hora (Zona horaria de España: UTC+1 con horario de verano)
+const char* ntpServer = "pool.ntp.org";
+const long gmtOffset_sec = 3600;      // UTC +1
+const int daylightOffset_sec = 3600;   // Horario de verano (+1 hora)
+
+void setup() {
+    Serial.begin(115200);
+
+    // Configurar el pin del LED
+    pinMode(PIN_LED, OUTPUT);
+    digitalWrite(PIN_LED, HIGH); // Apagado por defecto (HIGH = APAGADO)
+
+    // Gestor de Wi-Fi
+    WiFiManager wifiManager;
+    if (!wifiManager.autoConnect("ESP8266-Config-Luces")) {
+        Serial.println("Error de conexión. Reiniciando...");
+        delay(3000);
+        ESP.restart();
+    }
+    Serial.println("¡Conectado a la red Wi-Fi!");
+
+    // Sincronizar hora local para el modo AUTO
+    configTime(gmtOffset_sec, daylightOffset_sec, ntpServer);
+}
+
+// Función para leer cualquier nodo
+String leerFirebase(String ruta) {
+    if (WiFi.status() != WL_CONNECTED) return "";
+    
+    WiFiClientSecure client;
+    client.setInsecure();
+    HTTPClient http;
+    
+    // Al no haber barra en BASE_URL, la añade aquí correctamente (/modo.json)
+    String url = BASE_URL + "/" + ruta + ".json?auth=" + AUTH_KEY;
+    http.begin(client, url);
+    
+    int httpCode = http.GET();
+    String respuesta = "";
+    
+    if (httpCode == 200) {
+        respuesta = http.getString();
+        respuesta.trim();
+        respuesta.replace("\"", ""); // Eliminar comillas
+    }
+    
+    http.end();
+    return respuesta;
+}
+
+// Obtener la hora actual en formato HH:MM
+String getHoraActual() {
+    struct tm timeinfo;
+    if (!getLocalTime(&timeinfo)) {
+        return "";
+    }
+    char timeStringBuff[10];
+    strftime(timeStringBuff, sizeof(timeStringBuff), "%H:%M", &timeinfo);
+    return String(timeStringBuff);
+}
+
+void loop() {
+    // 1. Leer el Modo configurado en la Web
+    String modo = leerFirebase("mode");
+    Serial.print("Modo actual: ");
+    Serial.println(modo);
+
+    if (modo == "ON") {
+        digitalWrite(PIN_LED, LOW);  // Encender LED
+    } 
+    else if (modo == "OFF") {
+        digitalWrite(PIN_LED, HIGH); // Apagar LED
+    } 
+    else if (modo == "AUTO") {
+        // En modo AUTO, leemos el horario configurado en la base de datos
+        String horaOn = leerFirebase("schedules/h_on");
+        String horaOff = leerFirebase("schedules/h_off");
+        String horaActual = getHoraActual();
+
+        Serial.println("Modo AUTO -> Hora actual: " + horaActual + " [Encendido: " + horaOn + " | Apagado: " + horaOff + "]");
+
+        if (horaActual != "" && horaOn != "" && horaOff != "") {
+            // Comprobar si la hora actual está dentro del rango programado
+            if (horaOn < horaOff) {
+                if (horaActual >= horaOn && horaActual < horaOff) {
+                    digitalWrite(PIN_LED, LOW);  // Encender
+                } else {
+                    digitalWrite(PIN_LED, HIGH); // Apagar
+                }
+            } else {
+                // Para rangos que cruzan la medianoche (ej. 21:00 a 07:00)
+                if (horaActual >= horaOn || horaActual < horaOff) {
+                    digitalWrite(PIN_LED, LOW);  // Encender
+                } else {
+                    digitalWrite(PIN_LED, HIGH); // Apagar
+                }
+            }
+        }
+    }
+
+    delay(1000); // Revisa Firebase cada segundo
+}
