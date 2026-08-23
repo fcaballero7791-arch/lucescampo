@@ -1,0 +1,336 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Control ESP8266 - Alhama de Murcia</title>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    
+    <!-- Librerías Firebase -->
+    <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-app.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-database.js"></script>
+
+    <style>
+        :root {
+            --bg: #0f172a;
+            --card: #1e293b;
+            --primary: #3b82f6;
+            --success: #10b981;
+            --warning: #f59e0b;
+            --danger: #ef4444;
+            --text: #f8fafc;
+            --muted: #94a3b8;
+            --border: #334155;
+        }
+
+        * { box-sizing: border-box; margin: 0; padding: 0; font-family: 'Inter', sans-serif; }
+
+        body {
+            background-color: var(--bg);
+            color: var(--text);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+            padding: 20px;
+        }
+
+        .container {
+            width: 100%;
+            max-width: 420px;
+            background: var(--card);
+            border-radius: 16px;
+            padding: 24px;
+            border: 1px solid var(--border);
+            box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.3);
+        }
+
+        .header { text-align: center; margin-bottom: 20px; }
+        .header h1 { font-size: 1.4rem; color: var(--text); display: flex; align-items: center; justify-content: center; gap: 8px; }
+        .header p { font-size: 0.8rem; color: var(--muted); margin-top: 4px; }
+
+        .status-box {
+            background: rgba(15, 23, 42, 0.6);
+            border: 1px solid var(--border);
+            border-radius: 12px;
+            padding: 14px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            margin-bottom: 20px;
+        }
+
+        .status-info { display: flex; align-items: center; gap: 10px; }
+        .status-dot { width: 12px; height: 12px; border-radius: 50%; background: var(--muted); transition: all 0.3s ease; }
+        .status-dot.active { background: var(--success); box-shadow: 0 0 10px var(--success); }
+        .status-dot.inactive { background: var(--danger); box-shadow: 0 0 10px var(--danger); }
+
+        .section-title { font-size: 0.75rem; font-weight: 700; text-transform: uppercase; color: var(--muted); margin-bottom: 10px; }
+
+        .mode-buttons { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin-bottom: 20px; }
+        .btn-mode {
+            background: #0f172a;
+            border: 1px solid var(--border);
+            color: var(--muted);
+            padding: 12px 6px;
+            border-radius: 10px;
+            font-size: 0.85rem;
+            font-weight: 600;
+            cursor: pointer;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 6px;
+            transition: all 0.2s ease;
+        }
+
+        .btn-mode.active-on { background: rgba(16, 185, 129, 0.15); border-color: var(--success); color: var(--success); }
+        .btn-mode.active-off { background: rgba(239, 68, 68, 0.15); border-color: var(--danger); color: var(--danger); }
+        .btn-mode.active-auto { background: rgba(59, 130, 246, 0.15); border-color: var(--primary); color: var(--primary); }
+
+        .auto-settings {
+            background: rgba(15, 23, 42, 0.4);
+            border: 1px solid var(--border);
+            border-radius: 12px;
+            padding: 16px;
+            margin-bottom: 20px;
+            display: none;
+        }
+
+        .auto-settings.visible { display: block; }
+
+        .toggle-solar {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            background: var(--card);
+            padding: 10px;
+            border-radius: 8px;
+            margin-bottom: 12px;
+            border: 1px solid var(--border);
+            font-size: 0.85rem;
+        }
+
+        .switch { position: relative; width: 40px; height: 22px; }
+        .switch input { opacity: 0; width: 0; height: 0; }
+        .slider { position: absolute; cursor: pointer; top: 0; left: 0; right: 0; bottom: 0; background: #334155; transition: .3s; border-radius: 20px; }
+        .slider:before { position: absolute; content: ""; height: 16px; width: 16px; left: 3px; bottom: 3px; background: white; transition: .3s; border-radius: 50%; }
+        input:checked + .slider { background: var(--warning); }
+        input:checked + .slider:before { transform: translateX(18px); }
+
+        .time-inputs { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+        .input-box { display: flex; flex-direction: column; gap: 4px; }
+        .input-box label { font-size: 0.75rem; color: var(--muted); }
+        .input-box input[type="time"] {
+            background: #0f172a;
+            border: 1px solid var(--border);
+            color: var(--text);
+            padding: 8px;
+            border-radius: 6px;
+            font-size: 0.9rem;
+            outline: none;
+            width: 100%;
+        }
+
+        .input-box input[type="time"]:disabled {
+            opacity: 0.6;
+            cursor: not-allowed;
+        }
+
+        .btn-save {
+            width: 100%;
+            background: var(--primary);
+            color: white;
+            border: none;
+            padding: 10px;
+            border-radius: 8px;
+            font-weight: 600;
+            cursor: pointer;
+            margin-top: 12px;
+            transition: background 0.2s;
+        }
+
+        .btn-save:hover { background: #2563eb; }
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <div class="header">
+        <h1><i class="fa-solid fa-bolt" style="color: var(--warning);"></i> ESP8266</h1>
+        <p>Alhama de Murcia</p>
+    </div>
+
+    <div class="status-box">
+        <div class="status-info">
+            <div id="statusDot" class="status-dot"></div>
+            <div>
+                <h2 id="statusText" style="font-size: 0.95rem;">APAGADO</h2>
+                <span id="modeLabel" style="font-size: 0.75rem; color: var(--muted);">Modo: OFF</span>
+            </div>
+        </div>
+        <i id="statusIcon" class="fa-solid fa-power-off" style="font-size: 1.3rem; color: var(--danger);"></i>
+    </div>
+
+    <div class="section-title">Modo</div>
+    <div class="mode-buttons">
+        <button id="btnOn" class="btn-mode" onclick="setMode('ON')"><i class="fa-solid fa-power-off"></i>ON</button>
+        <button id="btnOff" class="btn-mode active-off" onclick="setMode('OFF')"><i class="fa-solid fa-toggle-off"></i>OFF</button>
+        <button id="btnAuto" class="btn-mode" onclick="setMode('AUTO')"><i class="fa-solid fa-clock"></i>AUTO</button>
+    </div>
+
+    <div id="autoSettings" class="auto-settings">
+        <div class="section-title">Ajustes AUTO</div>
+        
+        <div class="toggle-solar">
+            <label><i class="fa-solid fa-sun" style="color: var(--warning);"></i> Sol (Salida/Puesta)</label>
+            <label class="switch">
+                <input type="checkbox" id="solarSwitch" onchange="toggleSolarMode()">
+                <span class="slider"></span>
+            </label>
+        </div>
+
+        <div id="customSchedule">
+            <div class="time-inputs">
+                <div class="input-box">
+                    <label>Encendido</label>
+                    <input type="time" id="h_on" value="08:00">
+                </div>
+                <div class="input-box">
+                    <label>Apagado</label>
+                    <input type="time" id="h_off" value="20:00">
+                </div>
+            </div>
+            <button id="btnSaveSchedule" class="btn-save" onclick="saveSchedule()">Guardar Horario</button>
+        </div>
+    </div>
+</div>
+
+<script>
+    // Configuración con tu URL sin barra al final
+    const firebaseConfig = { 
+        apiKey: "AIzaSyAuXCEZGd0d39eR3PJLUeGIV9YbeyXC2Ss", 
+        databaseURL: "https://luces-campo-default-rtdb.firebaseio.com" 
+    };
+
+    let db = null;
+
+    // Coordenadas exactas para Alhama de Murcia
+    const LATITUD = 37.8508;
+    const LONGITUD = -1.4251;
+
+    function initFirebase() {
+        if (!firebase.apps.length) firebase.initializeApp(firebaseConfig);
+        db = firebase.database();
+        listenToState();
+    }
+
+    function listenToState() {
+        if (!db) return;
+        db.ref('relai_state').on('value', snap => updateUIState(snap.val()));
+        db.ref('mode').on('value', snap => updateModeUI(snap.val() || 'OFF'));
+        db.ref('solar_mode').on('value', snap => {
+            const isSolar = snap.val() || false;
+            document.getElementById('solarSwitch').checked = isSolar;
+            toggleSolarUI(isSolar);
+        });
+        db.ref('schedules').on('value', snap => {
+            const data = snap.val();
+            if (data && !document.getElementById('solarSwitch').checked) {
+                if (data.h_on) document.getElementById('h_on').value = data.h_on;
+                if (data.h_off) document.getElementById('h_off').value = data.h_off;
+            }
+        });
+    }
+
+    async function fetchSolarTimes() {
+        try {
+            const response = await fetch(`https://api.open-meteo.com/v1/forecast?latitude=${LATITUD}&longitude=${LONGITUD}&daily=sunrise,sunset&timezone=auto`);
+            const data = await response.json();
+            
+            const sunrise = data.daily.sunrise[0].split('T')[1].substring(0, 5);
+            const sunset = data.daily.sunset[0].split('T')[1].substring(0, 5);
+
+            document.getElementById('h_on').value = sunrise;
+            document.getElementById('h_off').value = sunset;
+
+            if (db) {
+                db.ref('schedules').set({ h_on: sunrise, h_off: sunset });
+            }
+        } catch (error) {
+            console.error("Error al consultar el sol:", error);
+        }
+    }
+
+    function updateUIState(isOn) {
+        const dot = document.getElementById('statusDot');
+        const text = document.getElementById('statusText');
+        const icon = document.getElementById('statusIcon');
+        if (isOn === true || isOn === 'ON') {
+            dot.className = "status-dot active";
+            text.innerText = "ENCENDIDO";
+            icon.style.color = "var(--success)";
+        } else {
+            dot.className = "status-dot inactive";
+            text.innerText = "APAGADO";
+            icon.style.color = "var(--danger)";
+        }
+    }
+
+    function setMode(mode) {
+        updateModeUI(mode);
+        if (mode === 'ON') updateUIState(true);
+        if (mode === 'OFF') updateUIState(false);
+        if (db) db.ref('mode').set(mode);
+    }
+
+    function updateModeUI(mode) {
+        document.getElementById('btnOn').className = "btn-mode " + (mode === 'ON' ? 'active-on' : '');
+        document.getElementById('btnOff').className = "btn-mode " + (mode === 'OFF' ? 'active-off' : '');
+        document.getElementById('btnAuto').className = "btn-mode " + (mode === 'AUTO' ? 'active-auto' : '');
+        document.getElementById('modeLabel').innerText = "Modo: " + mode;
+        
+        const autoSettings = document.getElementById('autoSettings');
+        if (mode === 'AUTO') autoSettings.classList.add('visible');
+        else autoSettings.classList.remove('visible');
+    }
+
+    function toggleSolarMode() {
+        const isSolar = document.getElementById('solarSwitch').checked;
+        if (db) db.ref('solar_mode').set(isSolar);
+        toggleSolarUI(isSolar);
+    }
+
+    function toggleSolarUI(isSolar) {
+        const hOnInput = document.getElementById('h_on');
+        const hOffInput = document.getElementById('h_off');
+        const saveBtn = document.getElementById('btnSaveSchedule');
+
+        if (isSolar) {
+            hOnInput.disabled = true;
+            hOffInput.disabled = true;
+            saveBtn.style.display = 'none';
+            fetchSolarTimes();
+        } else {
+            hOnInput.disabled = false;
+            hOffInput.disabled = false;
+            saveBtn.style.display = 'block';
+        }
+    }
+
+    function saveSchedule() {
+        if (db) {
+            db.ref('schedules').set({
+                h_on: document.getElementById('h_on').value,
+                h_off: document.getElementById('h_off').value
+            }).then(() => alert("Horario guardado"));
+        }
+    }
+
+    window.onload = () => {
+        initFirebase();
+    };
+</script>
+</body>
+</html>
